@@ -14,7 +14,7 @@ marker = []
 class JWTAuthenticationPolicy(CallbackAuthenticationPolicy):
     def __init__(self, private_key, public_key=None, algorithm='HS512',
             leeway=0, expiration=None, default_claims=None,
-            http_header='Authorization', auth_type='JWT',
+            http_header='Authorization', token_getter=None, auth_type='JWT',
             callback=None, json_encoder=None, audience=None,):
         self.private_key = private_key
         self.public_key = public_key if public_key is not None else private_key
@@ -22,6 +22,7 @@ class JWTAuthenticationPolicy(CallbackAuthenticationPolicy):
         self.leeway = leeway
         self.default_claims = default_claims if default_claims else {}
         self.http_header = http_header
+        self.token_getter = token_getter
         self.auth_type = auth_type
         if expiration:
             if not isinstance(expiration, datetime.timedelta):
@@ -56,17 +57,22 @@ class JWTAuthenticationPolicy(CallbackAuthenticationPolicy):
 
 
     def get_claims(self, request):
-        if self.http_header == 'Authorization':
-            try:
-                if request.authorization is None:
-                    return {}
-            except ValueError:  # Invalid Authorization header
-                return {}
-            (auth_type, token) = request.authorization
-            if auth_type != self.auth_type:
-                return {}
+        custom_token = self.token_getter(request) if self.token_getter else None
+
+        if custom_token:
+            token = custom_token
         else:
-            token = request.headers.get(self.http_header)
+            if self.http_header == 'Authorization':
+                try:
+                    if request.authorization is None:
+                        return {}
+                except ValueError:  # Invalid Authorization header
+                    return {}
+                (auth_type, token) = request.authorization
+                if auth_type != self.auth_type:
+                    return {}
+            else:
+                token = request.headers.get(self.http_header)
         if not token:
             return {}
         try:
